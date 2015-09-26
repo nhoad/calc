@@ -1,9 +1,7 @@
 # TODO:
 # - scrolling
 # - disable cursor?
-# - save/load should remember file name
 # - save should prompt for overwrite
-# - mention current cell coordinates
 # - cell borders
 # - after edit position should stay the same
 # - pretty formatting?
@@ -199,6 +197,9 @@ class SpreadSheet:
         self.sheet.clear()
         self.draw_headings()
         self.draw_data()
+        column = ord('A') + self.position.x
+        pos = '({}:{})'.format(chr(column), str(self.position.y+1))
+        self.stdscr.addstr(0, 1, pos)
         self.chgat(curses.A_REVERSE)  # highlight current cell
         try:
             self.stdscr.addstr(EDIT_Y, EDIT_X, self.cells[self.position].text)
