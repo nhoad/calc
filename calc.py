@@ -5,9 +5,6 @@
 # - save should prompt for overwrite
 # - mention current cell coordinates
 # - cell borders
-# - formula should support lists as well as ranges
-# - make =ref(D12) work instead of =ref(D12:D12)
-# - make =sub(D12,D15)
 # - after edit position should stay the same
 # - pretty formatting?
 # - highlight cells of bad formula to show it's messed up
@@ -36,6 +33,10 @@ COLUMN_OFFSET = 1
 COLUMN_WIDTH = 10
 
 SPREADSHEET = None
+
+single_cell = re.compile(r'([A-Z])(\d+)', flags=re.IGNORECASE)
+cell_expansion = re.compile(r'([A-Z]\d+(?::[A-Z]\d+)?,?)', flags=re.IGNORECASE)
+formula = re.compile(r'^=(?P<name>[A-Z]+)\((?P<args>.+)\)$', flags=re.IGNORECASE)
 
 
 class SpreadSheet:
@@ -214,12 +215,12 @@ class Cell(namedtuple('Cell', 'text')):
     __slots__ = ()
 
     def render(self):
-        m = re.match(r'^=([a-z]+)\(([a-z]+)(\d+)([:,])([a-z]+)(\d+)\)$', self.text, flags=re.IGNORECASE)
+        m = formula.match(self.text)
 
         if m:
             # looks... formulaic...
             try:
-                return self.run_formula(m)
+                return self.run_formula(m.group('name'), m.group('args'))
             except Exception:
                 pass
 
@@ -227,35 +228,33 @@ class Cell(namedtuple('Cell', 'text')):
             return self.text[:COLUMN_WIDTH-1]
         return self.text
 
-    def run_formula(self, m):
-        func, col_start, row_start, separator, col_end, row_end = m.groups()
+    def run_formula(self, name, args):
+        cells = []
 
-        func = func.lower()
+        for cell in cell_expansion.findall(args):
+            coords = single_cell.findall(cell)
+            col_start, row_start = coords[0]
 
-        _cells = []
+            if len(coords) == 2:  # it's a range, e.g. A1:A5
+                col_end, row_end = coords[1]
 
-        if separator == ',':
-            p = Point(
-                ord(col_start.upper()) - ord('A'),
-                int(row_start) - 1,
-            )
-            if p in SPREADSHEET.cells:
-                _cells.append(SPREADSHEET.cells[p])
+                for y in range(int(row_start)-1, int(row_end)):
+                    for x in range(ord(col_start.upper()) - ord('A'), ord(col_end.upper()) - ord('A') + 1):
+                        p = Point(x, y)
+                        if p in SPREADSHEET.cells:
+                            cells.append(SPREADSHEET.cells[p])
+            else:
+                assert len(coords) == 1
 
-            p = Point(
-                ord(col_end.upper()) - ord('A'),
-                int(row_end) - 1,
-            )
-            if p in SPREADSHEET.cells:
-                _cells.append(SPREADSHEET.cells[p])
-        else:
-            for y in range(int(row_start)-1, int(row_end)):
-                for x in range(ord(col_start.upper()) - ord('A'), ord(col_end.upper()) - ord('A') + 1):
-                    p = Point(x, y)
-                    if p in SPREADSHEET.cells:
-                        _cells.append(SPREADSHEET.cells[p])
+                p = Point(
+                    ord(col_start.upper()) - ord('A'),
+                    int(row_start) - 1,
+                )
 
-        return getattr(self, func)(_cells)
+                if p in SPREADSHEET.cells:
+                    cells.append(SPREADSHEET.cells[p])
+
+        return getattr(self, name.lower())(cells)
 
     def ref(self, cells):
         return cells[0].render()
